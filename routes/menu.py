@@ -5,8 +5,10 @@ import os
 
 
 
+lunch_bp = Blueprint("lunch", __name__)
+dinner_bp = Blueprint("dinner", __name__)
+anju_bp = Blueprint("anju", __name__)
 
-menu_bp = Blueprint("menu", __name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "..", "data")
 
@@ -20,7 +22,7 @@ dinner_items = load_menu("dinner_items.json")
 anju_items = load_menu("anju_items.json")
 
 
-@menu_bp.route("/lunch", methods=["POST"])
+@lunch_bp.route("/lunch", methods=["POST"])
 def lunch():
     text = request.form.get("text", "").strip().lower()
 
@@ -37,7 +39,7 @@ def lunch():
     })
 
 
-@menu_bp.route("/dinner", methods=["POST"])
+@dinner_bp.route("/dinner", methods=["POST"])
 def dinner():
     text = request.form.get("text", "").strip().lower()
 
@@ -54,7 +56,7 @@ def dinner():
     })
 
 
-@menu_bp.route("/anju", methods=["POST"])
+@anju_bp.route("/anju", methods=["POST"])
 def anju():
     text = request.form.get("text", "").strip().lower()
 
@@ -69,3 +71,5 @@ def anju():
     return jsonify({
         "text": f"🍢 오늘의 안주 추천: *{selected['name']}*" if text else f"🍢 태그 없이 전체 메뉴 중 추천된 안주: *{selected['name']}*"
     })
+
+__all__ = ["lunch_bp", "dinner_bp", "anju_bp"]
