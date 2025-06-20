@@ -67,7 +67,6 @@ def gongji():
 
         # 메시지 작성: @user_id: 메시지
         formatted_message = f"<@{user_id}>: {message}"
-<<<<<<< HEAD
 
         # 메시지 작성: @user_id: 메시지
         formatted_message = f"<@{user_id}>: {message}"
@@ -75,8 +74,6 @@ def gongji():
         # 메시지 전송
         client.chat_postMessage(channel=channel_id, text=formatted_message)
         return jsonify({"text": f"✅ `#{matched_channel}` 채널에 공지를 보냈습니다."})
-=======
->>>>>>> 481d7c1 (new commit)
 
         # 메시지 전송
         client.chat_postMessage(channel=channel_id, text=message)
@@ -168,12 +165,10 @@ def joojong():
 
 
 if __name__ == "__main__":
-<<<<<<< HEAD
-<<<<<<< HEAD
+
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-=======
+
     app.run(port=5000)
->>>>>>> 481d7c1 (new commit)
-=======
+
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
->>>>>>> f75f8b2 (error fix commit)
+
