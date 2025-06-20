@@ -1,11 +1,18 @@
 from flask import Blueprint, request, jsonify
 import json
 import random
+import os
+
+
+
 
 menu_bp = Blueprint("menu", __name__)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "..", "data")
 
 def load_menu(filename):
-    with open(filename, encoding="utf-8") as f:
+    path = os.path.join(DATA_DIR, filename)
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 lunch_items = load_menu("lunch_items.json")
