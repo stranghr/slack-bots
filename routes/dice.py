@@ -2,9 +2,11 @@ from flask import Blueprint, request, jsonify
 import random
 import re
 
-dice_bp = Blueprint("dice", __name__)
 
-@dice_bp.route("/soju", methods=["POST"])
+dice_bp = Blueprint("dice", __name__)
+soju_bp = Blueprint("soju", __name__)  
+
+@soju_bp.route("/soju", methods=["POST"])
 def recommend_drink():
     try:
         alcohol_options = ["소주", "맥주", "소맥", "막걸리", "와인", "칵테일"]
@@ -45,3 +47,5 @@ def roll_dice():
 
     except Exception as e:
         return jsonify({"text": f"⚠️ 오류 발생: {str(e)}"})
+
+__all__ = ["dice_bp", "soju_bp"]
