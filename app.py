@@ -8,9 +8,10 @@ load_dotenv()
 app = Flask(__name__)
 
 # Blueprint 등록
-from gongji import gongji_bp
-from menu import lunch_bp, dinner_bp, anju_bp
-from dice import soju_bp, dice_bp
+from routes.gongji import gongji_bp
+from routes.menu import lunch_bp, dinner_bp, anju_bp
+from routes.dice import soju_bp, dice_bp  # dice_bp도 따로 있다면 함께
+
 
 app.register_blueprint(gongji_bp)
 app.register_blueprint(lunch_bp)
