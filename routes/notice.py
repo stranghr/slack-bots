@@ -1,9 +1,7 @@
-# routes/notice.py
-
 from flask import Blueprint, request, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
 from slack_sdk import WebClient
-from datetime import datetime, timedata
+from datetime import datetime, timedelta
 import pytz
 import os
 import re
@@ -105,3 +103,5 @@ def schedule_notice():
 
     except Exception as e:
         return jsonify(response_type="ephemeral", text=f"⚠️ 예약 실패: {str(e)}")
+
+__all__ = ["noticesc_bp"]
