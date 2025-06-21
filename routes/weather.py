@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import pytz
 import os
 import requests
+import logging
 
 weather_bp = Blueprint("weather", __name__)
 slack_token  = os.environ["SLACK_BOT_TOKEN"]
@@ -53,11 +54,6 @@ def get_base_time(api_type: int) -> (str, str):
     return base_time, base_date
 
 def fetch_weather(api_type: int, nx: int, ny: int, target_time: datetime):
-    """
-    Returns (temp, precip_mm, sky) or (None, None, None) on error.
-    - 초단기: T1H, RN1, SKY
-    - 단기  : TMP, PCP, SKY
-    """
     base_time, base_date = get_base_time(api_type)
     endpoint = "getUltraSrtFcst" if api_type == 1 else "getVilageFcst"
     url = f"http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/{endpoint}"
@@ -76,8 +72,8 @@ def fetch_weather(api_type: int, nx: int, ny: int, target_time: datetime):
         res = requests.get(url, params=params, timeout=5)
         res.raise_for_status()
         data_json = res.json()
-    except (requests.RequestException, ValueError):
-        # HTTP 에러, 타임아웃, JSON 파싱 에러 모두 여기서 처리
+    except Exception as e:
+        logging.exception("Weather API error")
         return None, None, None
 
     items = data_json.get("response", {}) \
@@ -121,31 +117,42 @@ def weather():
             location = part
 
     if LOCATION_GRID.get(location) is None:
-        slack_client.chat_postMessage(channel=channel_id,
-            text=f"🔍 `{location}` 위치는 현재 미정입니다.")
+        slack_client.chat_postMessage(
+            channel=channel_id,
+            text=f"🔍 `{location}` 위치는 현재 미정입니다."
+        )
         return jsonify({"text":"위치 미정"})
 
-    target_time = get_forecast_time(time_keyword)
-    delta       = target_time - datetime.now(KST)
-    api_type    = 1 if delta <= timedelta(hours=6) else 2
+    try:
+        target_time = get_forecast_time(time_keyword)
+        delta       = target_time - datetime.now(KST)
+        api_type    = 1 if delta <= timedelta(hours=6) else 2
 
-    nx, ny = LOCATION_GRID[location]
-    temp, precip, sky = fetch_weather(api_type, nx, ny, target_time)
+        nx, ny = LOCATION_GRID[location]
+        temp, precip, sky = fetch_weather(api_type, nx, ny, target_time)
 
-    # API 오류 시
-    if temp is None and precip is None and sky == "":
-        slack_client.chat_postMessage(channel=channel_id,
-            text="⚠️ 기상 정보 조회 중 오류가 발생했습니다. 나중에 다시 시도해주세요.")
-        return jsonify({"text":"기상 정보 오류"})
+        if temp is None and precip is None and sky == "":
+            raise RuntimeError("기상 API 응답이 올바르지 않습니다")
 
-    date_str = target_time.strftime("%Y-%m-%d %H:%M")
-    message = (
-        f"📍 {location}, {date_str} 기준\n"
-        f"- 기온: {temp}℃\n"
-        f"- 하늘상태: {sky}\n"
-        f"- 강수량: {precip}mm\n"
-        f"(문의자: <@{user_id}>)"
-    )
+        date_str = target_time.strftime("%Y-%m-%d %H:%M")
+        message = (
+            f"📍 {location}, {date_str} 기준\n"
+            f"- 기온: {temp}℃\n"
+            f"- 하늘상태: {sky}\n"
+            f"- 강수량: {precip}mm\n"
+            f"(문의자: <@{user_id}>)"
+        )
+        slack_client.chat_postMessage(channel=channel_id, text=message)
+        return jsonify({"response_type":"in_channel"})
 
-    slack_client.chat_postMessage(channel=channel_id, text=message)
-    return jsonify({"response_type":"in_channel"})
+    except Exception as e:
+        reason = str(e)
+        logging.exception("Error in /weather handler")
+        slack_client.chat_postMessage(
+            channel=channel_id,
+            text=f"{reason} 오류가 발생해 */날씨*에 실패했습니다."
+        )
+        return jsonify({
+            "response_type": "ephemeral",
+            "text": f"{reason} 오류가 발생해 */날씨*에 실패했습니다."
+        })
