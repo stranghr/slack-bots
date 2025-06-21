@@ -92,7 +92,7 @@ def fetch_weather(api_type, nx, ny, target_time):
     def get_base_time(target_time):
         if api_type == "초단기":
             base_minute = 30 if target_time.minute >= 30 else 0
-            base_time_dt = target_time.replace(minute=base_minute, second=0, microsecond=0) - timedelta(minutes=40)
+            base_time_dt = target_time.replace(minute=base_minute, second=0, microsecond=0) - timedelta(minutes=45)
             return base_time_dt.strftime("%H%M"), base_time_dt
         else:
             candidate_hours = [2, 5, 8, 11, 14, 17, 20, 23]
@@ -103,8 +103,8 @@ def fetch_weather(api_type, nx, ny, target_time):
                 base_time_dt = base_time_dt.replace(hour=selected_hour)
             return base_time_dt.strftime("%H%M"), base_time_dt
 
-    base_date = target_time.strftime("%Y%m%d")
     base_time, base_time_dt = get_base_time(target_time)
+    base_date = base_time_dt.strftime("%Y%m%d")
 
     url_base = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/"
     endpoint = "getUltraSrtFcst" if api_type == "초단기" else "getVilageFcst"
@@ -161,7 +161,7 @@ def fetch_weather(api_type, nx, ny, target_time):
     return temp, sky, pty
 
 @weather_bp.route("/weather", methods=["POST"])
-def weather_schedule():
+def weather():
     text = request.form.get("text", "").strip()
     channel_id = request.form.get("channel_id")
     user_id = request.form.get("user_id")
@@ -170,12 +170,12 @@ def weather_schedule():
     now = datetime.now(KST)
 
     if len(parts) == 0:
-        target_time = now
+        target_time = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
         location = "학교"
     elif len(parts) == 1:
         if parts[0] in LOCATION_GRID:
-            target_time = now
             location = parts[0]
+            target_time = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
         else:
             target_time = parse_time_expression(parts[0])
             location = "학교"
