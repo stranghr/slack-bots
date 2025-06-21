@@ -93,7 +93,22 @@ PTY_CODE = {"0": "없음", "1": "비", "2": "비/눈", "3": "눈", "4": "소나�
 
 def fetch_weather(api_type, nx, ny, target_time):
     base_date = target_time.strftime("%Y%m%d")
-    base_time = (target_time - timedelta(minutes=target_time.minute % 30)).strftime("%H%M")
+    if api_type == "초단기":
+        # 초단기예보는 30분 단위 base_time, base_time 기준 약 40분 후부터 조회 가능
+        base_minute = 30 if target_time.minute >= 30 else 0
+        base_time_dt = target_time.replace(minute=base_minute, second=0, microsecond=0)
+        base_time_dt -= timedelta(minutes=40)
+        base_time = base_time_dt.strftime("%H%M")
+    else:
+        # 단기예보는 정시 base_time이며 02, 05, 08, 11, 14, 17, 20, 23시 기준으로 제공됨 (약 10분 이후부터)
+        candidate_hours = [2, 5, 8, 11, 14, 17, 20, 23]
+        hour = target_time.hour
+        selected_hour = max([h for h in candidate_hours if h <= hour], default=23)
+        base_time_dt = target_time.replace(hour=selected_hour, minute=0, second=0, microsecond=0)
+        if target_time < base_time_dt + timedelta(minutes=10):
+            selected_hour = max([h for h in candidate_hours if h < hour], default=23)
+            base_time_dt = target_time.replace(hour=selected_hour, minute=0, second=0, microsecond=0)
+        base_time = base_time_dt.strftime("%H%M")
     url_base = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/"
     endpoint = "getUltraSrtFcst" if api_type == "초단기" else "getVilageFcst"
 
@@ -115,7 +130,22 @@ def fetch_weather(api_type, nx, ny, target_time):
     data = {cat: None for cat in ["T1H", "TMP", "SKY", "PTY"]}
 
     for item in items:
-        if item.get("fcstTime") == fcst_time or api_type == "초단기":
+        item_time = item.get("fcstTime")
+        cat = item.get("category")
+        if api_type == "초단기":
+            if cat in data:
+                data[cat] = item.get("fcstValue")
+        else:
+            # 단기예보는 시간 간격이 예보일수에 따라 다름 (1일: 1시간, 2~3일: 3시간)
+            delta_days = (target_time.date() - base_time_dt.date()).days
+            if delta_days >= 2:
+                # 3시간 간격 예보 - 가장 가까운 시간대 선택
+                target_hour = (target_time.hour // 3) * 3
+                if int(item_time[:2]) == target_hour and cat in data:
+                    data[cat] = item.get("fcstValue")
+            else:
+                if item_time == fcst_time and cat in data:
+                    data[cat] = item.get("fcstValue")
             cat = item.get("category")
             if cat in data:
                 data[cat] = item.get("fcstValue")
@@ -171,4 +201,4 @@ def weather_schedule():
         return jsonify({"text": f"❗ 지원하지 않는 지역입니다: {location}"})
 
     send_weather_message(channel_id, location, target_time)
-    return jsonify({"text": f"✅ {target_time.strftime('%Y-%m-%d %H:%M')}에 {location} 날씨가 전송됩니다."})
+    return ('', 200)
