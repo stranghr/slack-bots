@@ -95,7 +95,11 @@ def fetch_weather(api_type, nx, ny, target_time):
         if fcst_time == fcst_target and cat in data:
             data[cat] = item.get("fcstValue")
 
-    temp = data.get("T1H")
+    if api_type == "초단기":
+        temp = data.get("T1H")
+    else:
+        # 단기예보에선 TMP 사용
+        temp = data.get("TMP")
     sky = SKY_CODE.get(data.get("SKY", ""), "")
     pty = PTY_CODE.get(data.get("PTY", ""), "")
     return temp, sky, pty
