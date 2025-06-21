@@ -129,7 +129,7 @@ def fetch_weather(api_type, nx, ny, target_time):
     fcst_time = target_time.strftime("%H%M")
     data = {cat: None for cat in ["T1H", "TMP", "SKY", "PTY"]}
 
-        nearest_diff = timedelta.max
+    nearest_diff = timedelta.max
     fallback_data = {}
 
     for item in items:
