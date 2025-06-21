@@ -99,7 +99,7 @@ def schedule_notice():
             args=[channel_id, message]
         )
 
-        return jsonify(response_type="ephemeral", text=f"✅ {time_str}에 공지 예약 완료 (채널: <#{channel_id}>)")
+        return jsonify(response_type="ephemeral", text=f"✅ {target_time}에 공지 예약 완료 (채널: <#{channel_id}>)")
 
     except Exception as e:
         return jsonify(response_type="ephemeral", text=f"⚠️ 예약 실패: {str(e)}")
