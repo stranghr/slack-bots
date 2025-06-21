@@ -15,7 +15,7 @@ LOCATION_MAP = {
 }
 
 # 기상청 서비스 키는 환경 변수로 관리
-SERVICE_KEY = os.environ["SERVICE_KEY"]
+SERVICE_KEY = os.environ["KMA_SERVICE_KEY"]
 
 # 단기예보 발표 시각 리스트
 RELEASE_TIMES = ["0200", "0500", "0800", "1100", "1400", "1700", "2000", "2300"]
