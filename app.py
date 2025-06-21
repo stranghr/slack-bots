@@ -11,8 +11,9 @@ app = Flask(__name__)
 from routes.gongji import gongji_bp
 from routes.menu import lunch_bp, dinner_bp, anju_bp
 from routes.dice import soju_bp, dice_bp  # dice_bp도 따로 있다면 함께
+from routes.notice import noticesc_bp
 
-
+app.register_blueprint(noticesc_bp)
 app.register_blueprint(gongji_bp)
 app.register_blueprint(lunch_bp)
 app.register_blueprint(dinner_bp)
