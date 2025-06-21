@@ -6,6 +6,7 @@ import pytz
 import os
 import re
 import requests
+import xml.etree.ElementTree as ET
 
 weather_bp = Blueprint("weather", __name__)
 scheduler = BackgroundScheduler()
@@ -116,7 +117,7 @@ def fetch_weather(api_type, nx, ny, target_time):
         "serviceKey": service_key,
         "numOfRows": 100,
         "pageNo": 1,
-        "dataType": "JSON",
+        "dataType": "XML",
         "base_date": base_date,
         "base_time": base_time,
         "nx": nx,
@@ -124,16 +125,18 @@ def fetch_weather(api_type, nx, ny, target_time):
     }
 
     res = requests.get(url, params=params)
-    items = res.json().get("response", {}).get("body", {}).get("items", {}).get("item", [])
+    root = ET.fromstring(res.content)
+    items = root.findall(".//item")
 
     data = {cat: None for cat in ["T1H", "TMP", "SKY", "PTY"]}
     nearest_diff = timedelta.max
     fallback_data = {}
 
     for item in items:
-        fcst_date = item.get("fcstDate")
-        fcst_time = item.get("fcstTime")
-        cat = item.get("category")
+        fcst_date = item.findtext("fcstDate")
+        fcst_time = item.findtext("fcstTime")
+        cat = item.findtext("category")
+        value = item.findtext("fcstValue")
         if not (fcst_date and fcst_time and cat in data):
             continue
 
@@ -141,10 +144,10 @@ def fetch_weather(api_type, nx, ny, target_time):
         diff = abs(fcst_dt - target_time)
         if diff < nearest_diff:
             nearest_diff = diff
-            fallback_data[cat] = item.get("fcstValue")
+            fallback_data[cat] = value
 
         if fcst_dt == target_time:
-            data[cat] = item.get("fcstValue")
+            data[cat] = value
 
     for k in data:
         if data[k] is None and fallback_data.get(k):
@@ -155,50 +158,3 @@ def fetch_weather(api_type, nx, ny, target_time):
     pty = PTY_CODE.get(data.get("PTY", ""), "")
 
     return temp, sky, pty
-
-# 슬랙 전송
-def send_weather_message(channel, location, target_time):
-    if LOCATION_GRID.get(location) is None:
-        slack_client.chat_postMessage(channel=channel, text=f"🔍 `{location}` 위치는 현재 미정입니다.")
-        return
-
-    nx, ny = LOCATION_GRID[location]
-    api_type = select_api(target_time)
-    if not api_type:
-        slack_client.chat_postMessage(channel=channel, text="❗ 해당 시간의 예보 정보는 제공되지 않습니다.")
-        return
-
-    temp, sky, pty = fetch_weather(api_type, nx, ny, target_time)
-    date_str = target_time.strftime("%Y-%m-%d %H:%M")
-    message = f"📍 {location}, {date_str} 기준\n- 기온: {temp}℃\n- 날씨: {sky}\n- 강수: {pty}"
-    slack_client.chat_postMessage(channel=channel, text=message)
-
-@weather_bp.route("/weather", methods=["POST"])
-def weather_schedule():
-    text = request.form.get("text", "").strip()
-    channel_id = request.form.get("channel_id")
-
-    parts = text.split()
-    now = datetime.now(KST)
-
-    target_time = now
-    location = "학교"
-
-    if len(parts) == 1:
-        if parts[0] in LOCATION_GRID:
-            location = parts[0]
-        else:
-            target_time = parse_time_expression(parts[0])
-    elif len(parts) == 2:
-        if parts[0] in LOCATION_GRID:
-            location = parts[0]
-            target_time = parse_time_expression(parts[1])
-        else:
-            target_time = parse_time_expression(parts[0])
-            location = parts[1]
-
-    if location not in LOCATION_GRID:
-        return jsonify({"text": f"❗ 지원하지 않는 지역입니다: {location}"})
-
-    send_weather_message(channel_id, location, target_time)
-    return ('', 200)
