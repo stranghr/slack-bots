@@ -51,14 +51,15 @@ def find_channel_by_partial_name(partial_name):
     try:
         response = slack_client.conversations_list(types="public_channel,private_channel", limit=1000)
         channels = response['channels']
+        norm_input = re.sub(r"[^a-zA-Z0-9가-힣]", "", partial_name.lower())
+
         for ch in channels:
-            if partial_name in ch['name']:  # 단순 포함 비교
-                return ch['id']
+            ch_name_norm = re.sub(r"[^a-zA-Z0-9가-힣]", "", ch["name"].lower())
+            if norm_input in ch_name_norm:
+                return ch["id"]
     except Exception as e:
         print("채널 검색 오류:", e)
     return None
-
-
 
 @noticesc_bp.route("/noticesc", methods=["POST"])
 def schedule_notice():
@@ -72,7 +73,6 @@ def schedule_notice():
         if len(parts) < 2:
             return jsonify(response_type="ephemeral", text="⚠️ 형식: `/공지예약 [채널] [시간] [메시지]` 또는 `/공지예약 [시간] [메시지]`")
 
-        # 채널이 포함되었는지 확인
         if len(parts) == 3:
             channel_input = parts[0].replace("#", "").replace("<", "").replace(">", "")
             time_str = parts[1]
@@ -86,9 +86,8 @@ def schedule_notice():
             time_str = parts[0]
             message = parts[1]
 
-        # 시간 파싱 및 미래 시간 보정
+        # 시간 파싱
         try:
-            # 시간 해석
             target_time = parse_smart_time(time_str)
         except ValueError as e:
             return jsonify(response_type="ephemeral", text=f"⚠️ 시간 형식 오류: {e}")
