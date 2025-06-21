@@ -43,7 +43,7 @@ def get_base_time(api_type: int) -> (str, str):
             base_date = (now - timedelta(days=1)).strftime("%Y%m%d")
             base_time = "2300"
         else:
-            base_time = f"{now.hour - 1:02}00"
+            base_time = f"{now.hour - 1:02}30"
     else:  # 단기예보
         h = now.hour
         if h < 3:
@@ -67,11 +67,6 @@ def get_base_time(api_type: int) -> (str, str):
     return base_time, base_date
 
 def fetch_weather(api_type: int, nx: int, ny: int, target_time: datetime):
-    """
-    Returns (temp, precip_mm, sky) or (None, None, None) on error.
-    - 초단기: T1H, RN1, SKY
-    - 단기  : TMP, PCP, SKY
-    """
     base_time, base_date = get_base_time(api_type)
 
     # API URL differ by forecast type
