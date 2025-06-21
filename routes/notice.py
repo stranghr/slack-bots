@@ -47,10 +47,8 @@ def send_scheduled_message(channel_id, message):
 def find_channel_by_partial_name(partial_name):
     try:
         response = slack_client.conversations_list(types="public_channel,private_channel", limit=1000)
-        norm_input = re.sub(r"[^a-zA-Z0-9가-힣]", "", partial_name.lower())
-        for ch in response['channels']:
-            ch_name_norm = re.sub(r"[^a-zA-Z0-9가-힣]", "", ch["name"].lower())
-            if norm_input in ch_name_norm:
+        for ch in response["channels"]:
+            if partial_name in ch["name"]:
                 return ch["id"]
     except Exception as e:
         print("채널 검색 오류:", e)
