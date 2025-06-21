@@ -34,8 +34,7 @@ def get_base_datetime(target_dt=None):
     return datestr, past[-1]
 
 def call_short_term_forecast(base_date, base_time, nx, ny):
-    """기상청 단기예보 API 호출 (getVilageFcst)."""
-    url = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst"
+    url = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst"
     params = {
         "serviceKey": SERVICE_KEY,
         "pageNo": "1",
@@ -47,8 +46,20 @@ def call_short_term_forecast(base_date, base_time, nx, ny):
         "ny": str(ny),
     }
     resp = requests.get(url, params=params)
-    resp.raise_for_status()
-    return resp.json()
+    
+    # ① 상태 코드 확인
+    print(">>> API status_code:", resp.status_code)
+    # ② 실제 응답 본문(텍스트) 확인
+    print(">>> API response text:", resp.text[:500])  # 앞 500자만
+
+    # 비정상 응답이면 적절히 처리
+    if resp.status_code != 200:
+        raise RuntimeError(f"API 요청 실패: status={resp.status_code}")
+
+    try:
+        return resp.json()
+    except ValueError:
+        raise RuntimeError(f"JSON 파싱 실패, 원본문:\n{resp.text}")
 
 def extract_weather(json_data, fcst_date, fcst_time):
     """예보 데이터에서 기온(TMP)과 하늘상태(SKY)를 추출."""
@@ -59,6 +70,8 @@ def extract_weather(json_data, fcst_date, fcst_time):
                      if i['category']=="SKY" and i['fcstDate']==fcst_date and i['fcstTime']==fcst_time), None)
     sky_map = {"1":"맑음", "3":"구름많음", "4":"흐림"}
     return tmp, sky_map.get(sky_code, "알수없음")
+
+
 
 @weather_bp.route("/weather", methods=["POST"])
 def slack_weather():
