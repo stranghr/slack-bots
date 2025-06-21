@@ -21,12 +21,10 @@ LOCATION_GRID = {
 
 SKY_CODE = {"1": "맑음 ☀️", "3": "구름많음 ⛅", "4": "흐림 ☁️"}
 PTY_CODE = {"0": "없음", "1": "비", "2": "비/눈", "3": "눈", "4": "소나기"}
-
 CATEGORY_LABELS = {
     "T1H": "기온", "TMP": "기온", "RN1": "1시간 강수량", "PTY": "강수형태",
     "SKY": "하늘상태", "REH": "습도", "LGT": "낙뢰"
 }
-
 
 def get_forecast_time(keyword):
     now = datetime.now(KST)
@@ -37,7 +35,6 @@ def get_forecast_time(keyword):
     else:
         rounded = now.replace(minute=0, second=0, microsecond=0)
         return rounded + timedelta(hours=1)
-
 
 def get_base_time(api_type, target_time):
     now = datetime.now(KST)
@@ -69,7 +66,6 @@ def get_base_time(api_type, target_time):
             base_time = "2300"
     return base_time, base_date
 
-
 def fetch_weather(api_type, nx, ny, target_time):
     base_time, base_date = get_base_time(api_type, target_time)
     endpoint = "getUltraSrtFcst" if api_type == "초단기" else "getVilageFcst"
@@ -99,11 +95,10 @@ def fetch_weather(api_type, nx, ny, target_time):
         if fcst_time == fcst_target and cat in data:
             data[cat] = item.get("fcstValue")
 
-    temp = data.get("T1H") or data.get("TMP")
+    temp = data.get("T1H")
     sky = SKY_CODE.get(data.get("SKY", ""), "")
     pty = PTY_CODE.get(data.get("PTY", ""), "")
     return temp, sky, pty
-
 
 @weather_bp.route("/weather", methods=["POST"])
 def weather():
