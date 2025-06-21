@@ -19,9 +19,13 @@ LOCATION_GRID = {
     "학교": (59, 125), "제작자": (61, 126), "합숙": None
 }
 
-CATEGORY_LABELS = {"TMP": "기온", "PTY": "강수형태", "SKY": "하늘상태"}
 SKY_CODE = {"1": "맑음 ☀️", "3": "구름많음 ⛅", "4": "흐림 ☁️"}
 PTY_CODE = {"0": "없음", "1": "비", "2": "비/눈", "3": "눈", "4": "소나기"}
+
+CATEGORY_LABELS = {
+    "T1H": "기온", "TMP": "기온", "RN1": "1시간 강수량", "PTY": "강수형태",
+    "SKY": "하늘상태", "REH": "습도", "LGT": "낙뢰"
+}
 
 
 def get_forecast_time(keyword):
@@ -30,7 +34,7 @@ def get_forecast_time(keyword):
         return now.replace(hour=12, minute=0, second=0, microsecond=0) + timedelta(days=1)
     elif keyword == "모레":
         return now.replace(hour=12, minute=0, second=0, microsecond=0) + timedelta(days=2)
-    else:  # 지금 → 1시간 후 정시 예보 요청
+    else:
         rounded = now.replace(minute=0, second=0, microsecond=0)
         return rounded + timedelta(hours=1)
 
@@ -72,7 +76,7 @@ def fetch_weather(api_type, nx, ny, target_time):
     url = f"http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/{endpoint}"
     params = {
         "serviceKey": service_key,
-        "numOfRows": 100,
+        "numOfRows": 1000,
         "pageNo": 1,
         "dataType": "JSON",
         "base_date": base_date,
@@ -86,18 +90,18 @@ def fetch_weather(api_type, nx, ny, target_time):
     except:
         return None, "", ""
 
-    data = {"TMP": None, "SKY": None, "PTY": None}
     fcst_target = target_time.strftime("%Y%m%d%H%M")
+    data = {key: None for key in CATEGORY_LABELS.keys()}
 
     for item in items:
         fcst_time = item.get("fcstDate", "") + item.get("fcstTime", "")
         cat = item.get("category")
-        if fcst_time <= fcst_target and cat in data and data[cat] is None:
+        if fcst_time == fcst_target and cat in data:
             data[cat] = item.get("fcstValue")
 
-    temp = data["TMP"]
-    sky = SKY_CODE.get(data["SKY"], "")
-    pty = PTY_CODE.get(data["PTY"], "")
+    temp = data.get("T1H") or data.get("TMP")
+    sky = SKY_CODE.get(data.get("SKY", ""), "")
+    pty = PTY_CODE.get(data.get("PTY", ""), "")
     return temp, sky, pty
 
 
