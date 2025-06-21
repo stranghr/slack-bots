@@ -6,7 +6,6 @@ import pytz
 import os
 import re
 import requests
-import xml.etree.ElementTree as ET
 
 weather_bp = Blueprint("weather", __name__)
 scheduler = BackgroundScheduler()
@@ -113,7 +112,7 @@ def fetch_weather(api_type, nx, ny, target_time):
         "serviceKey": service_key,
         "numOfRows": 100,
         "pageNo": 1,
-        "dataType": "XML",
+        "dataType": "JSON",
         "base_date": base_date,
         "base_time": base_time,
         "nx": nx,
@@ -123,21 +122,20 @@ def fetch_weather(api_type, nx, ny, target_time):
     try:
         res = requests.get(url, params=params)
         res.raise_for_status()
-        root = ET.fromstring(res.content)
+        items = res.json().get("response", {}).get("body", {}).get("items", {}).get("item", [])
     except Exception as e:
-        print(f"기상청 API 요청/파싱 실패: {e}")
+        print(f"기상청 API 요청 실패: {e}")
         return None, "", ""
 
-    items = root.findall(".//item")
     data = {cat: None for cat in ["T1H", "TMP", "SKY", "PTY"]}
     nearest_diff = timedelta.max
     fallback_data = {}
 
     for item in items:
-        fcst_date = item.findtext("fcstDate")
-        fcst_time = item.findtext("fcstTime")
-        cat = item.findtext("category")
-        value = item.findtext("fcstValue")
+        fcst_date = item.get("fcstDate")
+        fcst_time = item.get("fcstTime")
+        cat = item.get("category")
+        value = item.get("fcstValue")
         if not (fcst_date and fcst_time and cat in data):
             continue
 
