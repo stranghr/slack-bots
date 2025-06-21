@@ -92,26 +92,25 @@ SKY_CODE = {"1": "맑음 ☀️", "3": "구름많음 ⛅", "4": "흐림 ☁️"}
 PTY_CODE = {"0": "없음", "1": "비", "2": "비/눈", "3": "눈", "4": "소나기"}
 
 def fetch_weather(api_type, nx, ny, target_time):
-    base_date = target_time.strftime("%Y%m%d")
-    if api_type == "초단기":
-        # 초단기예보는 30분 단위 base_time, base_time 기준 약 40분 후부터 조회 가능
-        base_minute = 30 if target_time.minute >= 30 else 0
-        base_time_dt = target_time.replace(minute=base_minute, second=0, microsecond=0)
-        base_time_dt -= timedelta(minutes=40)
-        base_time = base_time_dt.strftime("%H%M")
-    else:
-        # 단기예보는 정시 base_time이며 02, 05, 08, 11, 14, 17, 20, 23시 기준으로 제공됨 (약 10분 이후부터)
-        candidate_hours = [2, 5, 8, 11, 14, 17, 20, 23]
-        hour = target_time.hour
-        selected_hour = max([h for h in candidate_hours if h <= hour], default=23)
-        base_time_dt = target_time.replace(hour=selected_hour, minute=0, second=0, microsecond=0)
-        if target_time < base_time_dt + timedelta(minutes=10):
-            selected_hour = max([h for h in candidate_hours if h < hour], default=23)
+    def get_base_time(target_time):
+        if api_type == "초단기":
+            base_minute = 30 if target_time.minute >= 30 else 0
+            base_time_dt = target_time.replace(minute=base_minute, second=0, microsecond=0) - timedelta(minutes=40)
+            return base_time_dt.strftime("%H%M"), base_time_dt
+        else:
+            candidate_hours = [2, 5, 8, 11, 14, 17, 20, 23]
+            selected_hour = max([h for h in candidate_hours if h <= target_time.hour], default=23)
             base_time_dt = target_time.replace(hour=selected_hour, minute=0, second=0, microsecond=0)
-        base_time = base_time_dt.strftime("%H%M")
+            if target_time < base_time_dt + timedelta(minutes=10):
+                selected_hour = max([h for h in candidate_hours if h < selected_hour], default=23)
+                base_time_dt = base_time_dt.replace(hour=selected_hour)
+            return base_time_dt.strftime("%H%M"), base_time_dt
+
+    base_date = target_time.strftime("%Y%m%d")
+    base_time, base_time_dt = get_base_time(target_time)
+
     url_base = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/"
     endpoint = "getUltraSrtFcst" if api_type == "초단기" else "getVilageFcst"
-
     url = url_base + endpoint
     params = {
         "serviceKey": service_key,
@@ -126,32 +125,27 @@ def fetch_weather(api_type, nx, ny, target_time):
 
     res = requests.get(url, params=params)
     items = res.json().get("response", {}).get("body", {}).get("items", {}).get("item", [])
-    fcst_time = target_time.strftime("%H%M")
-    data = {cat: None for cat in ["T1H", "TMP", "SKY", "PTY"]}
 
+    data = {cat: None for cat in ["T1H", "TMP", "SKY", "PTY"]}
     nearest_diff = timedelta.max
     fallback_data = {}
 
     for item in items:
-        item_time_str = item.get("fcstTime")
+        fcst_date = item.get("fcstDate")
+        fcst_time = item.get("fcstTime")
         cat = item.get("category")
-
-        if not item_time_str or cat not in data:
+        if not (fcst_date and fcst_time and cat in data):
             continue
 
-        item_hour = int(item_time_str[:2])
-        item_minute = int(item_time_str[2:])
-        item_time = target_time.replace(hour=item_hour, minute=item_minute, second=0, microsecond=0)
-
-        diff = abs(item_time - target_time)
+        fcst_dt = datetime.strptime(fcst_date + fcst_time, "%Y%m%d%H%M").replace(tzinfo=KST)
+        diff = abs(fcst_dt - target_time)
         if diff < nearest_diff:
             nearest_diff = diff
             fallback_data[cat] = item.get("fcstValue")
 
-        if item_time == target_time and cat in data:
+        if fcst_dt == target_time:
             data[cat] = item.get("fcstValue")
 
-    # fallback: 채워지지 않은 항목은 가장 가까운 값으로 대체
     for k in data:
         if data[k] is None and fallback_data.get(k):
             data[k] = fallback_data[k]
@@ -208,6 +202,3 @@ def weather_schedule():
 
     send_weather_message(channel_id, location, target_time)
     return ('', 200)
-
-
-__all__ = ["weather_bp"]
