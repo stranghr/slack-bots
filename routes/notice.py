@@ -49,14 +49,25 @@ def send_scheduled_message(channel_id, message):
 
 def find_channel_by_partial_name(partial_name):
     try:
-        response = slack_client.conversations_list(types="public_channel,private_channel")
+        response = slack_client.conversations_list(types="public_channel,private_channel", limit=1000)
         channels = response['channels']
+        partial_normalized = re.sub(r"[^ㄱ-ㅎ가-힣a-zA-Z0-9]", "", partial_name.lower())
+
+        # 1. 완전 포함 매칭 (우선순위 높음)
         for ch in channels:
             if partial_name in ch['name']:
                 return ch['id']
+
+        # 2. 하이픈/숫자 제거 후 유사 매칭
+        for ch in channels:
+            ch_name_cleaned = re.sub(r"[^ㄱ-ㅎ가-힣a-zA-Z0-9]", "", ch['name'].lower())
+            if partial_normalized in ch_name_cleaned:
+                return ch['id']
+
     except Exception as e:
         print("채널 검색 오류:", e)
     return None
+
 
 @noticesc_bp.route("/noticesc", methods=["POST"])
 def schedule_notice():
