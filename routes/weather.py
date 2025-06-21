@@ -30,6 +30,7 @@ def get_forecast_time(keyword: str) -> datetime:
     elif keyword == "모레":
         return now.replace(hour=12, minute=0, second=0, microsecond=0) + timedelta(days=2)
     else:
+        # "지금": 다음 정시
         rounded = now.replace(minute=0, second=0, microsecond=0)
         return rounded + timedelta(hours=1)
 
@@ -37,26 +38,48 @@ def get_base_time(api_type: int) -> (str, str):
     now = datetime.now(KST)
     base_date = now.strftime("%Y%m%d")
 
-    if api_type == 1:  # 초단기
-        base_hour = now.hour - 1
-        if base_hour < 0:
-            base_hour = 23
+    if api_type == 1:  # 초단기예보
+        if now.hour == 0:
             base_date = (now - timedelta(days=1)).strftime("%Y%m%d")
-        base_time = f"{base_hour:02}00"
-    else:  # 단기
-        announcement_hours = [2,5,8,11,14,17,20,23]
-        candidates = [h for h in announcement_hours if h <= now.hour]
-        base_hour = max(candidates) if candidates else 23
-        if now.hour < 2:
+            base_time = "2300"
+        else:
+            base_time = f"{now.hour - 1:02}00"
+    else:  # 단기예보
+        h = now.hour
+        if h < 3:
             base_date = (now - timedelta(days=1)).strftime("%Y%m%d")
-        base_time = f"{base_hour:02}00"
+            base_time = "2300"
+        elif h < 6:
+            base_time = "0200"
+        elif h < 9:
+            base_time = "0500"
+        elif h < 12:
+            base_time = "0800"
+        elif h < 15:
+            base_time = "1100"
+        elif h < 18:
+            base_time = "1400"
+        elif h < 21:
+            base_time = "1700"
+        else:
+            base_time = "2000"
 
     return base_time, base_date
 
 def fetch_weather(api_type: int, nx: int, ny: int, target_time: datetime):
+    """
+    Returns (temp, precip_mm, sky) or (None, None, None) on error.
+    - 초단기: T1H, RN1, SKY
+    - 단기  : TMP, PCP, SKY
+    """
     base_time, base_date = get_base_time(api_type)
-    endpoint = "getUltraSrtFcst" if api_type == 1 else "getVilageFcst"
-    url = f"http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/{endpoint}"
+
+    # API URL differ by forecast type
+    if api_type == 1:
+        url = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst"
+    else:
+        url = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst"
+
     params = {
         "serviceKey": service_key,
         "numOfRows": 1000,
@@ -72,7 +95,7 @@ def fetch_weather(api_type: int, nx: int, ny: int, target_time: datetime):
         res = requests.get(url, params=params, timeout=5)
         res.raise_for_status()
         data_json = res.json()
-    except Exception as e:
+    except Exception:
         logging.exception("Weather API error")
         return None, None, None
 
@@ -86,7 +109,7 @@ def fetch_weather(api_type: int, nx: int, ny: int, target_time: datetime):
     target_str = target_time.strftime("%Y%m%d%H%M")
 
     for item in items:
-        if (item.get("fcstDate","") + item.get("fcstTime","")) == target_str:
+        if item.get("fcstDate","") + item.get("fcstTime","") == target_str:
             cat = item.get("category")
             if cat in data:
                 data[cat] = item.get("fcstValue")
@@ -131,7 +154,7 @@ def weather():
         nx, ny = LOCATION_GRID[location]
         temp, precip, sky = fetch_weather(api_type, nx, ny, target_time)
 
-        if temp is None and precip is None and sky == "":
+        if temp is None and precip is None:
             raise RuntimeError("기상 API 응답이 올바르지 않습니다")
 
         date_str = target_time.strftime("%Y-%m-%d %H:%M")
