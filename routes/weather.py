@@ -99,7 +99,7 @@ def fetch_weather(api_type, nx, ny, target_time):
     #     temp = data.get("T1H")
     # else:
     #     temp = data.get("TMP")
-    temp = data.get("T1H")
+    temp = data.get("T1H") or data.get("TMP")
     sky = SKY_CODE.get(data.get("SKY", ""), "")
     pty = PTY_CODE.get(data.get("PTY", ""), "")
     return temp, sky, pty
