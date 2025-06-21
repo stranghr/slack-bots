@@ -38,11 +38,12 @@ def get_base_time(api_type, target_time):
     base_date = now.strftime("%Y%m%d")
 
     if api_type == "초단기":
-        if now.hour < 1:
+        # 정시보다 한 시간 이전의 정시 (예: 20:38 → 1900)
+        hour = now.hour - 1
+        base_time = f"{hour:02}00"
+        if now.hour == 0:
             base_date = (now - timedelta(days=1)).strftime("%Y%m%d")
             base_time = "2300"
-        else:
-            base_time = f"{now.hour - 1:02}00"
     else:
         hour = now.hour
         if 3 <= hour < 6:
