@@ -129,26 +129,32 @@ def fetch_weather(api_type, nx, ny, target_time):
     fcst_time = target_time.strftime("%H%M")
     data = {cat: None for cat in ["T1H", "TMP", "SKY", "PTY"]}
 
+        nearest_diff = timedelta.max
+    fallback_data = {}
+
     for item in items:
-        item_time = item.get("fcstTime")
+        item_time_str = item.get("fcstTime")
         cat = item.get("category")
-        if api_type == "초단기":
-            if cat in data:
-                data[cat] = item.get("fcstValue")
-        else:
-            # 단기예보는 시간 간격이 예보일수에 따라 다름 (1일: 1시간, 2~3일: 3시간)
-            delta_days = (target_time.date() - base_time_dt.date()).days
-            if delta_days >= 2:
-                # 3시간 간격 예보 - 가장 가까운 시간대 선택
-                target_hour = (target_time.hour // 3) * 3
-                if int(item_time[:2]) == target_hour and cat in data:
-                    data[cat] = item.get("fcstValue")
-            else:
-                if item_time == fcst_time and cat in data:
-                    data[cat] = item.get("fcstValue")
-            cat = item.get("category")
-            if cat in data:
-                data[cat] = item.get("fcstValue")
+
+        if not item_time_str or cat not in data:
+            continue
+
+        item_hour = int(item_time_str[:2])
+        item_minute = int(item_time_str[2:])
+        item_time = target_time.replace(hour=item_hour, minute=item_minute, second=0, microsecond=0)
+
+        diff = abs(item_time - target_time)
+        if diff < nearest_diff:
+            nearest_diff = diff
+            fallback_data[cat] = item.get("fcstValue")
+
+        if item_time == target_time and cat in data:
+            data[cat] = item.get("fcstValue")
+
+    # fallback: 채워지지 않은 항목은 가장 가까운 값으로 대체
+    for k in data:
+        if data[k] is None and fallback_data.get(k):
+            data[k] = fallback_data[k]
 
     temp = data.get("T1H") or data.get("TMP")
     sky = SKY_CODE.get(data.get("SKY", ""), "")
@@ -202,3 +208,6 @@ def weather_schedule():
 
     send_weather_message(channel_id, location, target_time)
     return ('', 200)
+
+
+__all__ = ["weather_bp"]
