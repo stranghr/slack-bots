@@ -25,12 +25,14 @@ PTY_CODE = {"0": "없음", "1": "비", "2": "비/눈", "3": "눈", "4": "소나�
 
 
 def get_forecast_time(keyword):
-    now = datetime.now(KST).replace(minute=0, second=0, microsecond=0)
+    now = datetime.now(KST)
     if keyword == "내일":
-        return now + timedelta(days=1, hours=12-now.hour)
+        return now.replace(hour=12, minute=0, second=0, microsecond=0) + timedelta(days=1)
     elif keyword == "모레":
-        return now + timedelta(days=2, hours=12-now.hour)
-    return now
+        return now.replace(hour=12, minute=0, second=0, microsecond=0) + timedelta(days=2)
+    else:  # 지금 → 1시간 후 정시 예보 요청
+        rounded = now.replace(minute=0, second=0, microsecond=0)
+        return rounded + timedelta(hours=1)
 
 
 def get_base_time(api_type, target_time):
@@ -38,12 +40,11 @@ def get_base_time(api_type, target_time):
     base_date = now.strftime("%Y%m%d")
 
     if api_type == "초단기":
-        # 정시보다 한 시간 이전의 정시 (예: 20:38 → 1900)
-        hour = now.hour - 1
-        base_time = f"{hour:02}00"
         if now.hour == 0:
             base_date = (now - timedelta(days=1)).strftime("%Y%m%d")
             base_time = "2300"
+        else:
+            base_time = f"{now.hour - 1:02}00"
     else:
         hour = now.hour
         if 3 <= hour < 6:
@@ -86,10 +87,13 @@ def fetch_weather(api_type, nx, ny, target_time):
         return None, "", ""
 
     data = {"TMP": None, "SKY": None, "PTY": None}
+    fcst_target = target_time.strftime("%Y%m%d%H%M")
+
     for item in items:
-        if item.get("fcstDate") and item.get("fcstTime") and item.get("category") in data:
-            if item["fcstDate"] == target_time.strftime("%Y%m%d") and item["fcstTime"] == target_time.strftime("%H%M"):
-                data[item["category"]] = item["fcstValue"]
+        fcst_time = item.get("fcstDate", "") + item.get("fcstTime", "")
+        cat = item.get("category")
+        if fcst_time <= fcst_target and cat in data and data[cat] is None:
+            data[cat] = item.get("fcstValue")
 
     temp = data["TMP"]
     sky = SKY_CODE.get(data["SKY"], "")
