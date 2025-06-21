@@ -18,12 +18,10 @@ KST = pytz.timezone("Asia/Seoul")
 def parse_smart_time(input_str: str) -> datetime:
     now = datetime.now(KST)
 
-    # 1. 숫자만 들어오면 분 단위로 인식
     if re.fullmatch(r"\d{1,3}", input_str):
         minutes = int(input_str)
         return now + timedelta(minutes=minutes)
 
-    # 2. HH:MM 형식
     if re.fullmatch(r"\d{1,2}:\d{2}", input_str):
         hour, minute = map(int, input_str.split(":"))
         target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
@@ -31,7 +29,6 @@ def parse_smart_time(input_str: str) -> datetime:
             target += timedelta(days=1)
         return target
 
-    # 3. MMDDHHMM 형식
     if re.fullmatch(r"\d{8}", input_str):
         month = int(input_str[0:2])
         day = int(input_str[2:4])
@@ -39,7 +36,7 @@ def parse_smart_time(input_str: str) -> datetime:
         minute = int(input_str[6:8])
         target = now.replace(month=month, day=day, hour=hour, minute=minute, second=0, microsecond=0)
         if target <= now:
-            target = target.replace(year=now.year + 1)  # 미래 기준
+            target = target.replace(year=now.year + 1)
         return KST.localize(target)
 
     raise ValueError("지원되지 않는 시간 형식입니다.")
@@ -50,10 +47,8 @@ def send_scheduled_message(channel_id, message):
 def find_channel_by_partial_name(partial_name):
     try:
         response = slack_client.conversations_list(types="public_channel,private_channel", limit=1000)
-        channels = response['channels']
         norm_input = re.sub(r"[^a-zA-Z0-9가-힣]", "", partial_name.lower())
-
-        for ch in channels:
+        for ch in response['channels']:
             ch_name_norm = re.sub(r"[^a-zA-Z0-9가-힣]", "", ch["name"].lower())
             if norm_input in ch_name_norm:
                 return ch["id"]
@@ -65,34 +60,33 @@ def find_channel_by_partial_name(partial_name):
 def schedule_notice():
     text = request.form.get("text", "").strip()
     user_channel = request.form.get("channel_id")
-    user_id = request.form.get("user_id")
 
     try:
-        parts = text.split(" ", 2)  # 채널 시간 메시지 or 시간 메시지
+        parts = text.split(" ", 2)
 
         if len(parts) < 2:
-            return jsonify(response_type="ephemeral", text="⚠️ 형식: `/공지예약 [채널] [시간] [메시지]` 또는 `/공지예약 [시간] [메시지]`")
+            return jsonify(response_type="ephemeral", text="❗ 형식 오류: `/예약공지 [시간] [메시지]` 또는 `/예약공지 [채널명] [시간] [메시지]`")
 
-        if len(parts) == 3:
+        # case 1: 채널명 + 시간 + 메시지
+        if len(parts) == 3 and re.fullmatch(r"\d{1,3}|\d{1,2}:\d{2}|\d{8}", parts[1]):
             channel_input = parts[0].replace("#", "").replace("<", "").replace(">", "")
             time_str = parts[1]
             message = parts[2]
 
             channel_id = find_channel_by_partial_name(channel_input)
             if channel_id is None:
-                return jsonify(response_type="ephemeral", text=f"⚠️ 채널 `{channel_input}` 을 찾을 수 없습니다.")
+                return jsonify(response_type="ephemeral", text=f"❗ 채널 `{channel_input}` 을 찾을 수 없습니다.")
         else:
-            channel_id = user_channel
+            # case 2: 시간 + 메시지 (현재 채널)
             time_str = parts[0]
-            message = parts[1]
+            message = " ".join(parts[1:])
+            channel_id = user_channel
 
-        # 시간 파싱
         try:
             target_time = parse_smart_time(time_str)
         except ValueError as e:
-            return jsonify(response_type="ephemeral", text=f"⚠️ 시간 형식 오류: {e}")
+            return jsonify(response_type="ephemeral", text=f"❗ 시간 형식 오류: {e}")
 
-        # 예약 등록
         scheduler.add_job(
             send_scheduled_message,
             trigger="date",
@@ -105,7 +99,8 @@ def schedule_notice():
             response_type="ephemeral",
             text=f"✅ {formatted_time} 에 공지 예약 완료 (채널: <#{channel_id}>)"
         )
+
     except Exception as e:
-        return jsonify(response_type="ephemeral", text=f"⚠️ 예약 실패: {str(e)}")
+        return jsonify(response_type="ephemeral", text=f"❗ 예약 실패: {str(e)}")
 
 __all__ = ["noticesc_bp"]
