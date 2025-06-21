@@ -40,8 +40,11 @@ LOCATION_GRID = {
 }
 
 # 시간 표현 해석 → datetime 객체
+
 def parse_time_expression(text):
     now = datetime.now(KST)
+    text = text.replace("시", ":")  # '18시' → '18:'
+
     if match := re.fullmatch(r"(\d{1,3})분", text):
         return now + timedelta(minutes=int(match.group(1)))
     elif match := re.fullmatch(r"(\d{1,2})시간", text):
@@ -55,9 +58,15 @@ def parse_time_expression(text):
     elif match := re.fullmatch(r"(\d{4})", text):
         year = now.year
         return datetime.strptime(f"{year}{match.group(1)}", "%Y%m%d").replace(tzinfo=KST, hour=12)
-    elif match := re.fullmatch(r"(\d{2})(\d{2})", text):
+    elif match := re.fullmatch(r"(\d{2}):(\d{2})", text):
         hour, minute = match.groups()
         return now.replace(hour=int(hour), minute=int(minute), second=0, microsecond=0)
+    elif match := re.fullmatch(r"(\d{1,2})일", text):
+        return now.replace(day=int(match.group(1)), hour=12, minute=0, second=0, microsecond=0)
+    elif match := re.fullmatch(r"(\d{1,2})일(\d{2})", text):
+        return now.replace(day=int(match.group(1)), hour=int(match.group(2)), minute=0, second=0, microsecond=0)
+    elif match := re.fullmatch(r"(\d{1,2})일(\d{2}):(\d{2})", text):
+        return now.replace(day=int(match.group(1)), hour=int(match.group(2)), minute=int(match.group(3)), second=0, microsecond=0)
     else:
         raise ValueError("지원하지 않는 시간 형식입니다.")
 
@@ -86,10 +95,7 @@ def fetch_weather(api_type, nx, ny, target_time):
     base_date = target_time.strftime("%Y%m%d")
     base_time = (target_time - timedelta(minutes=target_time.minute % 30)).strftime("%H%M")
     url_base = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/"
-    if api_type == "초단기":
-        endpoint = "getUltraSrtFcst"
-    else:
-        endpoint = "getVilageFcst"
+    endpoint = "getUltraSrtFcst" if api_type == "초단기" else "getVilageFcst"
 
     url = url_base + endpoint
     params = {
@@ -145,21 +151,21 @@ def weather_schedule():
     parts = text.split()
     now = datetime.now(KST)
 
-    if len(parts) == 0:
-        target_time = now
-        location = "학교"
-    elif len(parts) == 1:
+    target_time = now
+    location = "학교"
+
+    if len(parts) == 1:
         if parts[0] in LOCATION_GRID:
-            target_time = now
             location = parts[0]
         else:
             target_time = parse_time_expression(parts[0])
-            location = "학교"
     elif len(parts) == 2:
-        target_time = parse_time_expression(parts[0])
-        location = parts[1]
-    else:
-        return jsonify({"text": "❗ 형식: `/날씨 [시간] [장소]` 또는 `/날씨 [장소]`, `/날씨`"})
+        if parts[0] in LOCATION_GRID:
+            location = parts[0]
+            target_time = parse_time_expression(parts[1])
+        else:
+            target_time = parse_time_expression(parts[0])
+            location = parts[1]
 
     if location not in LOCATION_GRID:
         return jsonify({"text": f"❗ 지원하지 않는 지역입니다: {location}"})
