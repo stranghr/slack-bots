@@ -3,3 +3,4 @@ slack_sdk
 python-dotenv
 APScheduler
 pytz
+requests
