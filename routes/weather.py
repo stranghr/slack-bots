@@ -1,176 +1,103 @@
-from flask import Blueprint, request, jsonify
-from slack_sdk import WebClient
-from datetime import datetime, timedelta
-import pytz
+# weather.py
 import os
+import datetime
 import requests
-import logging
+from flask import Blueprint, request, jsonify
 
-weather_bp = Blueprint("weather", __name__)
-slack_token  = os.environ["SLACK_BOT_TOKEN"]
-service_key  = os.environ["KMA_SERVICE_KEY"]
-slack_client = WebClient(token=slack_token)
+weather_bp = Blueprint('weather', __name__)
 
-KST = pytz.timezone("Asia/Seoul")
-
-LOCATION_GRID = {
-    "서울": (60, 127), "부산": (98, 76), "대전": (67, 100), "광주": (58, 74), "제주": (52, 38),
-    "대구": (89, 90), "인천": (55, 124), "울산": (102, 84), "수원": (60, 121), "춘천": (73, 134),
-    "강릉": (92, 131), "청주": (69, 106), "전주": (63, 89), "포항": (102, 95), "창원": (91, 77),
-    "학교": (59, 125), "제작자": (61, 126), "합숙": None
+# 사전 지정된 지역명→기상청 그리드 좌표 맵
+LOCATION_MAP = {
+    "학교": {"nx": 55, "ny": 127},
+    "서울": {"nx": 60, "ny": 127},
+    "부산": {"nx": 98, "ny": 76},
+    # … 필요에 따라 추가
 }
 
-SKY_CODE = {"1": "맑음 ☀️", "3": "구름많음 ⛅", "4": "흐림 ☁️"}
-PTY_CODE = {"0": "없음", "1": "비", "2": "비/눈", "3": "눈", "4": "소나기"}
+# 기상청 서비스 키는 환경 변수로 관리
+SERVICE_KEY = os.environ["SERVICE_KEY"]
 
-def get_forecast_time(keyword: str) -> datetime:
-    now = datetime.now(KST)
-    if keyword == "내일":
-        return now.replace(hour=12, minute=0, second=0, microsecond=0) + timedelta(days=1)
-    elif keyword == "모레":
-        return now.replace(hour=12, minute=0, second=0, microsecond=0) + timedelta(days=2)
-    else:
-        # "지금": 다음 정시
-        rounded = now.replace(minute=0, second=0, microsecond=0)
-        return rounded + timedelta(hours=1)
+# 단기예보 발표 시각 리스트
+RELEASE_TIMES = ["0200", "0500", "0800", "1100", "1400", "1700", "2000", "2300"]
 
-def get_base_time(api_type: int) -> (str, str):
-    now = datetime.now(KST)
-    base_date = now.strftime("%Y%m%d")
+def get_base_datetime(target_dt=None):
+    """현재(또는 target_dt) 기준, 가장 최근 발표시각(base_time)과 날짜(base_date)를 반환."""
+    if target_dt is None:
+        target_dt = datetime.datetime.now()
+    hhmm = target_dt.strftime("%H%M")
+    datestr = target_dt.strftime("%Y%m%d")
+    past = [t for t in RELEASE_TIMES if t <= hhmm]
+    if not past:
+        # 02시 이전이면 전날 23시 발표 사용
+        prev_date = (target_dt - datetime.timedelta(days=1)).strftime("%Y%m%d")
+        return prev_date, "2300"
+    return datestr, past[-1]
 
-    if api_type == 1:  # 초단기예보
-        if now.hour == 0:
-            base_date = (now - timedelta(days=1)).strftime("%Y%m%d")
-            base_time = "2300"
-        else:
-            base_time = f"{now.hour - 1:02}30"
-    else:  # 단기예보
-        h = now.hour
-        if h < 3:
-            base_date = (now - timedelta(days=1)).strftime("%Y%m%d")
-            base_time = "2300"
-        elif h < 6:
-            base_time = "0200"
-        elif h < 9:
-            base_time = "0500"
-        elif h < 12:
-            base_time = "0800"
-        elif h < 15:
-            base_time = "1100"
-        elif h < 18:
-            base_time = "1400"
-        elif h < 21:
-            base_time = "1700"
-        else:
-            base_time = "2000"
-
-    return base_time, base_date
-
-def fetch_weather(api_type: int, nx: int, ny: int, target_time: datetime):
-    base_time, base_date = get_base_time(api_type)
-
-    # API URL differ by forecast type
-    if api_type == 1:
-        url = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst"
-    else:
-        url = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst"
-
+def call_short_term_forecast(base_date, base_time, nx, ny):
+    """기상청 단기예보 API 호출 (getVilageFcst)."""
+    url = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst"
     params = {
-        "serviceKey": service_key,
-        "numOfRows": 1000,
-        "pageNo": 1,
+        "serviceKey": SERVICE_KEY,
+        "pageNo": "1",
+        "numOfRows": "1000",
         "dataType": "JSON",
         "base_date": base_date,
         "base_time": base_time,
-        "nx": nx,
-        "ny": ny
+        "nx": str(nx),
+        "ny": str(ny),
     }
+    resp = requests.get(url, params=params)
+    resp.raise_for_status()
+    return resp.json()
 
-    try:
-        res = requests.get(url, params=params, timeout=5)
-        res.raise_for_status()
-        data_json = res.json()
-    except Exception:
-        logging.exception("Weather API error")
-        return None, None, None
-
-    items = data_json.get("response", {}) \
-                     .get("body", {}) \
-                     .get("items", {}) \
-                     .get("item", [])
-
-    needed = ["T1H","RN1","SKY"] if api_type == 1 else ["TMP","PCP","SKY"]
-    data = {cat: None for cat in needed}
-    target_str = target_time.strftime("%Y%m%d%H%M")
-
-    for item in items:
-        if item.get("fcstDate","") + item.get("fcstTime","") == target_str:
-            cat = item.get("category")
-            if cat in data:
-                data[cat] = item.get("fcstValue")
-
-    if api_type == 1:
-        temp   = data.get("T1H")
-        precip = data.get("RN1")
-    else:
-        temp   = data.get("TMP")
-        precip = data.get("PCP")
-
-    sky = SKY_CODE.get(data.get("SKY") or "", "")
-    return temp, precip, sky
+def extract_weather(json_data, fcst_date, fcst_time):
+    """예보 데이터에서 기온(TMP)과 하늘상태(SKY)를 추출."""
+    items = json_data['response']['body']['items']['item']
+    tmp = next((i['fcstValue'] for i in items
+                if i['category']=="TMP" and i['fcstDate']==fcst_date and i['fcstTime']==fcst_time), None)
+    sky_code = next((i['fcstValue'] for i in items
+                     if i['category']=="SKY" and i['fcstDate']==fcst_date and i['fcstTime']==fcst_time), None)
+    sky_map = {"1":"맑음", "3":"구름많음", "4":"흐림"}
+    return tmp, sky_map.get(sky_code, "알수없음")
 
 @weather_bp.route("/weather", methods=["POST"])
-def weather():
-    text       = request.form.get("text", "").strip()
-    channel_id = request.form.get("channel_id")
-    user_id    = request.form.get("user_id")
-    parts      = text.split()
+def slack_weather():
+    text = request.form.get("text", "").strip()
+    now = datetime.datetime.now()
 
-    time_keyword = "지금"
-    location     = "학교"
-    for part in parts:
-        if part in ["지금","내일","모레"]:
-            time_keyword = part
-        elif part in LOCATION_GRID:
-            location = part
-
-    if LOCATION_GRID.get(location) is None:
-        slack_client.chat_postMessage(
-            channel=channel_id,
-            text=f"🔍 `{location}` 위치는 현재 미정입니다."
+    # 기본 처리
+    if text == "":
+        loc, when = "학교", "오늘"
+        fcst_dt = now
+    elif text in ("내일", "모레"):
+        days = {"내일":1, "모레":2}[text]
+        loc, when = "학교", text
+        fcst_dt = now + datetime.timedelta(days=days)
+    elif text in LOCATION_MAP:
+        loc, when = text, "오늘"
+        fcst_dt = now
+    else:
+        return jsonify(
+            response_type="ephemeral",
+            text=f"지원하지 않는 입력입니다: `{text}`\n사용법: `/날씨 [지역명|내일|모레]`"
         )
-        return jsonify({"text":"위치 미정"})
 
-    try:
-        target_time = get_forecast_time(time_keyword)
-        delta       = target_time - datetime.now(KST)
-        api_type    = 1 if delta <= timedelta(hours=6) else 2
+    base_date, base_time = get_base_datetime(now)
+    fcst_date = fcst_dt.strftime("%Y%m%d")
 
-        nx, ny = LOCATION_GRID[location]
-        temp, precip, sky = fetch_weather(api_type, nx, ny, target_time)
+    # 조회 시각 결정
+    if when == "오늘":
+        fcst_time = fcst_dt.strftime("%H00")
+    else:
+        fcst_time = "1400"
 
-        if temp is None and precip is None:
-            raise RuntimeError("기상 API 응답이 올바르지 않습니다")
+    coords = LOCATION_MAP[loc]
+    data = call_short_term_forecast(base_date, base_time, coords["nx"], coords["ny"])
+    tmp, sky = extract_weather(data, fcst_date, fcst_time)
 
-        date_str = target_time.strftime("%Y-%m-%d %H:%M")
-        message = (
-            f"📍 {location}, {date_str} 기준\n"
-            f"- 기온: {temp}℃\n"
-            f"- 하늘상태: {sky}\n"
-            f"- 강수량: {precip}mm\n"
-            f"(문의자: <@{user_id}>)"
-        )
-        slack_client.chat_postMessage(channel=channel_id, text=message)
-        return jsonify({"response_type":"in_channel"})
-
-    except Exception as e:
-        reason = str(e)
-        logging.exception("Error in /weather handler")
-        slack_client.chat_postMessage(
-            channel=channel_id,
-            text=f"{reason} 오류가 발생해 */날씨*에 실패했습니다."
-        )
-        return jsonify({
-            "response_type": "ephemeral",
-            "text": f"{reason} 오류가 발생해 */날씨*에 실패했습니다."
-        })
+    message = (
+        f"*{loc} {when} {fcst_time}시 예보*\n"
+        f"> 기온: {tmp}℃\n"
+        f"> 날씨: {sky}"
+    )
+    return jsonify(response_type="in_channel", text=message)
