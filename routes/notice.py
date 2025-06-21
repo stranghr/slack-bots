@@ -46,10 +46,19 @@ def send_scheduled_message(channel_id, message):
 
 def find_channel_by_partial_name(partial_name):
     try:
-        response = slack_client.conversations_list(types="public_channel,private_channel", limit=1000)
+        response = slack_client.conversations_list()
+        channel_id = None
+        matched_channel = None
         for ch in response["channels"]:
             if partial_name in ch["name"]:
-                return ch["id"]
+                channel_id = ch["id"]
+                matched_channel = ch["name"]
+                return matched_channel, channel_id
+                break
+
+        if not channel_id:
+            return jsonify({"text": f"❗ 채널을 찾을 수 없습니다: `{partial_name}`"})
+
     except Exception as e:
         print("채널 검색 오류:", e)
     return None
@@ -67,11 +76,11 @@ def schedule_notice():
 
         # case 1: 채널명 + 시간 + 메시지
         if len(parts) == 3 and re.fullmatch(r"\d{1,3}|\d{1,2}:\d{2}|\d{8}", parts[1]):
-            channel_input = parts[0].replace("#", "").replace("<", "").replace(">", "")
+            channel_input = parts[0].lstrip("#")
             time_str = parts[1]
-            message = parts[2]
+            message = " ".join(parts[1:])
 
-            channel_id = find_channel_by_partial_name(channel_input)
+            mached_channel, channel_id = find_channel_by_partial_name(channel_input)
             if channel_id is None:
                 return jsonify(response_type="ephemeral", text=f"❗ 채널 `{channel_input}` 을 찾을 수 없습니다.")
         else:
@@ -95,7 +104,7 @@ def schedule_notice():
         formatted_time = target_time.strftime("%Y-%m-%d %H:%M")
         return jsonify(
             response_type="ephemeral",
-            text=f"✅ {formatted_time} 에 공지 예약 완료 (채널: <#{channel_id}>)"
+            text=f"✅ {formatted_time} 에 공지 예약 완료 (채널: <{mached_channel}>)"
         )
 
     except Exception as e:
