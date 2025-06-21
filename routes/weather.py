@@ -35,16 +35,21 @@ LOCATION_GRID = {
     "전주": (63, 89),
     "포항": (102, 95),
     "창원": (91, 77),
-    "학교": (59, 125),  # 관악구 (예시)
-    "제작자": (61, 126),  # 강남구 (예시)
-    "합숙": None  # 미정 처리
+    "학교": (59, 125),
+    "제작자": (61, 126),
+    "합숙": None
 }
 
-# 시간 표현 해석 → datetime 객체
+CATEGORY_LABELS = {
+    "T1H": "기온", "TMP": "기온",
+    "PTY": "강수형태", "SKY": "하늘상태"
+}
+SKY_CODE = {"1": "맑음 ☀️", "3": "구름많음 ⛅", "4": "흐림 ☁️"}
+PTY_CODE = {"0": "없음", "1": "비", "2": "비/눈", "3": "눈", "4": "소나기"}
 
 def parse_time_expression(text):
     now = datetime.now(KST)
-    text = text.replace("시", ":")  # '18시' → '18:'
+    text = text.replace("시", ":")
 
     if match := re.fullmatch(r"(\d{1,3})분", text):
         return now + timedelta(minutes=int(match.group(1)))
@@ -71,7 +76,6 @@ def parse_time_expression(text):
     else:
         raise ValueError("지원하지 않는 시간 형식입니다.")
 
-# 예보 API 선택
 def select_api(target_time):
     now = datetime.now(KST)
     delta = target_time - now
@@ -83,14 +87,6 @@ def select_api(target_time):
         return "단기"
     else:
         return None
-
-# 기상청 API 요청
-CATEGORY_LABELS = {
-    "T1H": "기온", "TMP": "기온",
-    "PTY": "강수형태", "SKY": "하늘상태"
-}
-SKY_CODE = {"1": "맑음 ☀️", "3": "구름많음 ⛅", "4": "흐림 ☁️"}
-PTY_CODE = {"0": "없음", "1": "비", "2": "비/눈", "3": "눈", "4": "소나기"}
 
 def fetch_weather(api_type, nx, ny, target_time):
     def get_base_time(target_time):
@@ -124,10 +120,15 @@ def fetch_weather(api_type, nx, ny, target_time):
         "ny": ny
     }
 
-    res = requests.get(url, params=params)
-    root = ET.fromstring(res.content)
-    items = root.findall(".//item")
+    try:
+        res = requests.get(url, params=params)
+        res.raise_for_status()
+        root = ET.fromstring(res.content)
+    except Exception as e:
+        print(f"기상청 API 요청/파싱 실패: {e}")
+        return None, "", ""
 
+    items = root.findall(".//item")
     data = {cat: None for cat in ["T1H", "TMP", "SKY", "PTY"]}
     nearest_diff = timedelta.max
     fallback_data = {}
@@ -158,3 +159,52 @@ def fetch_weather(api_type, nx, ny, target_time):
     pty = PTY_CODE.get(data.get("PTY", ""), "")
 
     return temp, sky, pty
+
+@weather_bp.route("/weather", methods=["POST"])
+def weather_schedule():
+    text = request.form.get("text", "").strip()
+    channel_id = request.form.get("channel_id")
+    user_id = request.form.get("user_id")
+
+    parts = text.split()
+    now = datetime.now(KST)
+
+    if len(parts) == 0:
+        target_time = now
+        location = "학교"
+    elif len(parts) == 1:
+        if parts[0] in LOCATION_GRID:
+            target_time = now
+            location = parts[0]
+        else:
+            target_time = parse_time_expression(parts[0])
+            location = "학교"
+    elif len(parts) == 2:
+        try:
+            target_time = parse_time_expression(parts[0])
+            location = parts[1]
+        except ValueError:
+            location = parts[0]
+            target_time = parse_time_expression(parts[1])
+    else:
+        return jsonify({"text": "❗ 형식: `/날씨 [시간] [장소]` 또는 `/날씨 [장소]`, `/날씨`"})
+
+    if location not in LOCATION_GRID:
+        return jsonify({"text": f"❗ 지원하지 않는 지역입니다: {location}"})
+
+    if LOCATION_GRID[location] is None:
+        slack_client.chat_postMessage(channel=channel_id, text=f"🔍 `{location}` 위치는 현재 미정입니다.")
+        return jsonify({"text": "위치 미정"})
+
+    nx, ny = LOCATION_GRID[location]
+    api_type = select_api(target_time)
+    if not api_type:
+        slack_client.chat_postMessage(channel=channel_id, text="❗ 해당 시간의 예보 정보는 제공되지 않습니다.")
+        return jsonify({"text": "예보 없음"})
+
+    temp, sky, pty = fetch_weather(api_type, nx, ny, target_time)
+    date_str = target_time.strftime("%Y-%m-%d %H:%M")
+    message = f"📍 {location}, {date_str} 기준\n- 기온: {temp}℃\n- 날씨: {sky}\n- 강수: {pty}\n(문의자: <@{user_id}>)"
+    slack_client.chat_postMessage(channel=channel_id, text=message)
+
+    return jsonify({"response_type": "in_channel"})
