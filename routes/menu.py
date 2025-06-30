@@ -35,7 +35,8 @@ def lunch():
 
     selected = random.choice(filtered)
     return jsonify({
-        "text": f"🍱오늘의 점심 추천: *{selected['name']}* #{text}" if text else f"🍱 태그 없이 전체 메뉴 중 추천된 점심: *{selected['name']}*"
+        "response_type": "in_channel",
+        "text": f"🍱오늘의 점심 추천: *{selected['name']}* #{text}" if text else f"🍱 전체 메뉴 중 추천된 점심: *{selected['name']}*"
     })
 
 
@@ -52,7 +53,8 @@ def dinner():
 
     selected = random.choice(filtered)
     return jsonify({
-        "text": f"🍽️ 오늘의 저녁 추천: *{selected['name']}* #{text}" if text else f"🍽️ 태그 없이 전체 메뉴 중 추천된 저녁: *{selected['name']}*"
+        "response_type": "in_channel",
+        "text": f"🍽️ 오늘의 저녁 추천: *{selected['name']}* #{text}" if text else f"🍽️ 전체 메뉴 중 추천된 저녁: *{selected['name']}*"
     })
 
 
@@ -69,7 +71,8 @@ def anju():
 
     selected = random.choice(filtered)
     return jsonify({
-        "text": f"🍢 오늘의 안주 추천: *{selected['name']}* #{text}" if text else f"🍢 태그 없이 전체 메뉴 중 추천된 안주: *{selected['name']}*"
+        "response_type": "in_channel",
+        "text": f"🍢 오늘의 안주 추천: *{selected['name']}* #{text}" if text else f"🍢 전체 메뉴 중 추천된 안주: *{selected['name']}*"
     })
 
 __all__ = ["lunch_bp", "dinner_bp", "anju_bp"]
